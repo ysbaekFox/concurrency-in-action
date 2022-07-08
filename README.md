@@ -1,1 +1,1 @@
-"# concurrency-in-action" 
+Concurrency In Action (By Anthony Williams) 예제 코드 실행 및 설명(번역)하였습니다.
