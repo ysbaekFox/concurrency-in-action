@@ -1,5 +1,9 @@
 #include <thread>
 #include <iostream>
+#include <string>
+#include <vector>
+#include <memory>
+#include <numeric>
 
 class background_task
 {
@@ -40,6 +44,8 @@ struct func
 			// reference i에 접근 중
 			do_something();
 		}
+
+		std::cout << "func done" << std::endl;
 	}
 
 	void do_something()
@@ -60,6 +66,68 @@ void oops()
 	// function return 되면
 	// localVriable 삭제되고, thread는 남아있어서 dangling 발생.
 }
+
+void copyFunc(int i, std::string const& s)
+{
+	std::cout << "i : " << i << ", s : " << s.c_str() << std::endl;
+}
+
+void refFunc(int i, std::string& s)
+{
+	std::cout << "i : " << i << ", s : " << s.c_str() << std::endl;
+}
+
+class X
+{
+public:
+	void do_something()
+	{
+		std::cout << "do something" << std::endl;
+	}
+};
+
+using big_object = std::string;
+
+void process_big_object(std::unique_ptr<big_object> bObj)
+{
+	std::cout << bObj.get() << std::endl;
+}
+
+void some_function()
+{
+	std::cout << "some_function" << std::endl;
+}
+
+void some_other_function()
+{
+	std::cout << "some_other_function" << std::endl;
+}
+
+class scoped_thread
+{
+public:
+	scoped_thread(std::thread _t)
+		: t(std::move(_t))
+	{
+		if(!t.joinable())
+		{
+		std::cout << "throw no thread" << std::endl;
+			throw std::logic_error("No Thread");
+		}
+	}
+
+	~scoped_thread()
+	{
+		t.join();
+		std::cout << "~scoped_thread" << std::endl;
+	}
+
+	scoped_thread(scoped_thread const &) = delete;
+	scoped_thread& operator=(scoped_thread const&) = delete;
+	
+private:
+	std::thread t;
+};
 
 int main()
 {
@@ -123,7 +191,9 @@ int main()
 	// 2) join 사용
 	//    - 단순 join 사용
 	//    - RAII 패턴을 사용하는 thread_guard Wrapper 사용
-	oops();
+
+	// undefined behavior!!!!!!
+	// oops();
 
 	// detach를 호출하는 것은 thread를 background로 보내고
 	// 직접적인 통신이 없다는 의미이다. 더 이상 thread가 완료 될 때까지 기다리는 것이 불가능하다는 것이다. (join 불가능)
@@ -158,7 +228,100 @@ int main()
 	}
 	*/
 
-	// thread function에 parameter 전달하기.
+	/*
+	* thread function에 parameter 전달하기.
+	*/
+
+	// 아래 동작은 실제로는 컴파일러에 의해 Copy가 발생함.
+	std::thread copyThread(copyFunc, 1, "hello");
+	copyThread.join();
+
+	// 아래와 같이 사용해야 함.
+	// void update_data_for_widget(widget_id w, widget_data& data);
+	// std::thread t(update_data_for_widget, w, data);
+
+	std::string refStr = "ref";
+	//std::thread refThread(refFunc, 2, refStr); //  얘는 빌드 에러 남.
+	std::thread refThread(refFunc, 3, std::ref(refStr)); // 이렇게 써야 함
+	refThread.join();
+
+	//std::bind와 사용 방법이 같아서, 아래처럼도 사용 가능.
+	// 클래스 내부에서는 아래처럼도 사용 가능.
+	// std::thread bindThread(&X::do_something, this);
+	// 코드에서 my_x.do_something()이 실행 될 것임.
+	X my_x;
+	std::thread bindThread(&X::do_something, &my_x);
+	bindThread.join();
+
+	// 이번엔 복사는 할 수 없고 move만 가능한 object에 대한 Case 임.
+	std::unique_ptr<big_object> p = std::make_unique<big_object>("big_object");
+	std::cout << p << std::endl;
+	std::thread moveThread(process_big_object, std::move(p));
+	moveThread.join();
+
+	// thread의 소유권 이동
+	std::thread transferring1(some_function);
+	std::thread transferring2 = std::move(transferring1);
+	transferring1 = std::thread(some_other_function);
+
+	std::thread transferring3;
+	transferring3 = std::move(transferring2);
+	
+	// transferring1은 이미 소유권을 가지고 있음.
+	// std::terminate() 발생
+	// transferring1 = std::move(transferring3);
+
+	transferring1.join();
+	transferring3.join();
+
+	// move의 장점은
+	// thread_guard에 std::move를 적용할 수 있다는 것이다.
+
+	int localNum = 0;
+	scoped_thread t{std::thread(func(localNum))};
+
+	// c++17에서는 다음과 같이 joining_thread라는 것을 구현할 수 있음
+	// 비록 이 구현은 c++17에서 C++ 표준 위원회에 의해 합의가 되지 않았지만
+	// c++20에서는 std::jthread라는 이름으로 추가 되었음.
+
+	/*
+	class joining_thread
+	{
+		...
+		(자세한 코드는 책을 참고할 것)
+		...
+		template<typename Callable, typename ... Args>
+		explicit joining_thread(Callable&& func, Args&& ... args)
+			: t(std::forward<Callable>(func), std::forward<Args>(args) ...)
+		{ }
+		...
+	}
+	*/
+
+
+	// move의 지원은 thread object들을 continaer로 관리할 수 있게 해줌.
+	std::vector<std::thread> threads;
+	for(int i = 0 ; i < 10 ; i++)
+	{
+		threads.emplace_back(copyFunc, i, "hello");
+	}
+
+	for(auto& obj : threads)
+	{
+		obj.join();
+	}
+
+	// thread의 개수를 runtime에 결정하기
+	std::cout << "hardware thread count : " << std::thread::hardware_concurrency() << std::endl;
+
+	// 그리고 이것을 활용한 예제 ex) std::accumulate
+	std::vector<int> v{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+	int sum = std::accumulate(v.begin(), v.end(), 0);
+	std::cout << sum << std::endl;
+
+	// thread를 식별하기 (identigying threads)
+	std::thread idThread([](){std::cout << "thread id : " << std::this_thread::get_id() << std::endl;});
+	idThread.join();
 
 	return 0;
 }
