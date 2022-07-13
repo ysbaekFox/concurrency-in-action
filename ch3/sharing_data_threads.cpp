@@ -4,7 +4,10 @@
 #include <algorithm>
 #include <list>
 #include <vector>
+#include <exception>
+
 #include "threadsafe_stack.h"
+#include "hierarchical_mutex.h"
 
 // 이번 챕터는 thread간의 안전한 data 공유 방법에 관한 것 임.
 // (잠재적인 위험은 피하고, benefit은 최대로 하는 것 !!)
@@ -105,6 +108,39 @@ private:
     std::mutex m;
 };
 
+hierarchical_mutex high_level_mutex(10000);
+hierarchical_mutex low_level_mutex(5000);
+hierarchical_mutex other_mutex(6000);
+
+int low_level_func()
+{
+    std::lock_guard<hierarchical_mutex> lk(low_level_mutex);
+    return 512;
+}
+
+void high_level_func()
+{
+    std::lock_guard<hierarchical_mutex> lk(high_level_mutex);
+    std::cout << "high_level_stuff : " << low_level_func() << std::endl;
+}
+
+void other_stuff()
+{
+    high_level_func();
+    std::cout << "do other stuff" << std::endl;
+}
+
+void thread_a()
+{
+    high_level_func();
+}
+
+void thread_b()
+{
+    std::lock_guard<hierarchical_mutex> lk(other_mutex);
+    other_stuff();
+}
+
 int main()
 {
     // mutex를 사용하여 공유 데이터 보호할 수 있음
@@ -173,9 +209,28 @@ int main()
     // 3) lock이 여러개 필요하면, 순서를 고정 시켜라. (3.2.4에서 방법 제시)
     // - 첫번째 케이스는 사용자가에게 그 짐을 전가하는 것 (예를 들어 stack처럼), 
     //   이러한 것이 발생할 때 꽤나 분명하다, 그래서 그 짐을 넘기는 것이 특별히 어렵지 않다.
-    // - ???
+    // - 다른 나머지의 경우 예를 들어 list에서 node를 제거하는 것과 같은 경우는
+    //   순서를 반드시 고정 시켜야 할 것 이다.
+
     // 4) lock 계층을 사용하라
-    // 5) 이 guide line을 잠금을 넘어서 확장해라.
+    std::thread hierarchicalMutexThread(thread_a);
+    hierarchicalMutexThread.join();
+
+    // high lock 전에 other lock 실행 되어 error throw 됨.
+    // 순서를 강제하는 deadlock 방지 기법!!
+    //std::thread hierarchicalMutexThread2(thread_b);
+    //hierarchicalMutexThread2.join();
+
+    // 5) 그리고 이 guide line들을 잠금을 넘어서 확장해라.
+
+    // std::unique_lock
+    // std::unique_lock은 std::lock_guard보다 좀 더 유연함을 제공한다.
+    
+    // adopt_lock : 이미 호출한 스레드가 락을 소유 했고 스레드에서 자체적으로 락을 관리한다고 가정합니다.  
+    // defer_lock : 뮤텍스 객체를 저장만하고 락을 시도하지 않습니다. 락의 시점을 지연시켜 사용자가 필요할 때 호출 할 수 있습니다.
+    // try_to_lock : 잠금하지 않고 뮤텍스의 소유권을 얻으려고 시도합니다.
+
+
 
     return 0;
 }
