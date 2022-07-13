@@ -1,3 +1,6 @@
+#ifndef THREADSAFE_STACK
+#define THREADSAFE_STACK
+
 #include <exception>
 #include <memory>
 #include <stack>
@@ -58,3 +61,5 @@ private:
     std::stack<T> data;
     mutable std::mutex m;
 };
+
+#endif
