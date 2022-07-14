@@ -141,6 +141,62 @@ void thread_b()
     other_stuff();
 }
 
+std::unique_lock<std::mutex> get_lock()
+{
+    static std::mutex some_mutex;
+    std::unique_lock<std::mutex> lk(some_mutex);
+    std::cout << &lk << std::endl;
+    return lk; // mutex 소유권 넘어감.
+}
+
+void process_data()
+{
+    // get_lock으로부터 mutex 소유권 넘어옴.
+    std::unique_lock<std::mutex> lk(get_lock());
+    std::cout << &lk << std::endl;
+    std::cout << "do something" << std::endl;
+}
+
+void get_and_process_data()
+{
+    static int data = 0;
+    std::mutex m;
+    std::unique_lock<std::mutex> my_lock(m, std::defer_lock);
+    my_lock.lock(); // 필요한 부분에서만 lock 수행
+    data = std::rand();
+    std::cout << data << std::endl;
+    my_lock.unlock();
+}
+
+class Y
+{
+public:
+    Y(int sd) : some_detail(sd)
+    {
+        
+    }
+
+    friend bool operator==(Y const& lhs, Y const& rhs)
+    {
+        if(&lhs == &rhs)
+            return true;
+        int const lhs_value = lhs.get_detail();
+        int const rhs_value = rhs.get_detail();
+        return lhs_value == rhs_value;
+    }
+
+private:
+    int some_detail;
+    mutable std::mutex m; // mutable : const 내부에서 값 수정이 필요할 때 사용
+
+    int get_detail() const
+    {
+        std::lock_guard<std::mutex> lock_a(m);
+        return some_detail;
+    }
+};
+
+
 int main()
 {
     // mutex를 사용하여 공유 데이터 보호할 수 있음
@@ -225,12 +281,37 @@ int main()
 
     // std::unique_lock
     // std::unique_lock은 std::lock_guard보다 좀 더 유연함을 제공한다.
+    // - std::unique_lock은 lock / unlock 할 수 있음.
+    // - std::lock_guard는 생성자와 소멸자를 통해서만 lock 가능함.
     
     // adopt_lock : 이미 호출한 스레드가 락을 소유 했고 스레드에서 자체적으로 락을 관리한다고 가정합니다.  
     // defer_lock : 뮤텍스 객체를 저장만하고 락을 시도하지 않습니다. 락의 시점을 지연시켜 사용자가 필요할 때 호출 할 수 있습니다.
     // try_to_lock : 잠금하지 않고 뮤텍스의 소유권을 얻으려고 시도합니다.
 
+    // unique_lock을 사용한 동시 잠금 방법. (생성자 사용 X)
+    std::mutex lm;
+    std::mutex rm;
 
+    std::unique_lock<std::mutex> lock_a(lm, std::defer_lock);
+    std::unique_lock<std::mutex> lock_b(rm, std::defer_lock);
+    std::lock(lock_a, lock_b);
+
+    // mutex 소유권 전달.
+    // std::move를 사용하여 명시적으로 사용하거나,
+    // 함수로부터 instance가 return 될 때, 자동으로 발생한다.
+    process_data();
+
+    // Locking at an appropriate granularity (적절한 낱알에서 잠그기?)
+    get_and_process_data();
+
+    // Locking one mutex at a time in a comparison operator
+    Y y_a(10);
+    Y y_b(10);
+    std::cout << "y_a and y_b is ame : " << (y_a == y_b) << std::endl;
+
+    // protecting a data structure with std::shared_mutex.
+    
+    // recursive locking
 
     return 0;
 }
