@@ -196,6 +196,82 @@ private:
     }
 };
 
+class some_resource
+{
+public:
+    void do_something() 
+    {
+        std::cout << "do something" << std::endl;
+    }
+};
+
+std::shared_ptr<some_resource> resource_ptr;
+std::mutex resource_mutex;
+void init_foo()
+{
+    std::unique_lock<std::mutex> lk(resource_mutex);
+    if(!resource_ptr)
+    {
+        resource_ptr = std::make_shared<some_resource>();
+    }
+    lk.unlock();
+    resource_ptr->do_something();
+}
+
+void undefined_behavior_with_double_checked_locking()
+{
+    // 버그 있음.
+    if(!resource_ptr)
+    {
+        std::lock_guard<std::mutex> lk(resource_mutex);
+        if(!resource_ptr)
+        {
+            // resource_ptr이 null이여서 if문 안으로 들어왔는데
+            // 다른 thread에서는 타이밍 이슈로 초기화해버려서 reset을 2번 호출할 수도 있다.
+            // 글대서 C++ Standards Committee에서 std::once와 std::call을 지원한다.
+            resource_ptr = std::make_shared<some_resource>();
+        }
+
+    }
+    resource_ptr->do_something();
+}
+
+void init_resource()
+{
+    resource_ptr = std::make_shared<some_resource>();
+}
+
+std::once_flag resource_flag;
+void call_once_init_foo()
+{
+    std::call_once(resource_flag, init_resource);
+    resource_ptr->do_something();
+}
+
+class recursive_mutex_test
+{
+public:
+    void func1()
+    {
+        std::lock_guard<std::recursive_mutex> lk(m);
+        shared = "func1";
+        std::cout << "in func1, shared variable is now : " << shared << std::endl;
+    }
+
+    void func2()
+    {
+        // lock 2번 발생하는데 괜찮음.
+        std::lock_guard<std::recursive_mutex> lk(m);
+        shared = "func2";
+        std::cout << "in func2, shared variable is now : " << shared << std::endl;
+        func1();
+        std::cout << "back in func2, shared variable is : " << shared << std::endl;
+    }
+
+private:
+    std::string shared;
+    std::recursive_mutex m;
+};
 
 int main()
 {
@@ -309,9 +385,28 @@ int main()
     Y y_b(10);
     std::cout << "y_a and y_b is ame : " << (y_a == y_b) << std::endl;
 
+    // protecting shared data during initialization
+    init_foo();
+    // undefined_behavior_with_double_checked_locking(); // 문제 있음.
+    call_once_init_foo();
+
     // protecting a data structure with std::shared_mutex.
-    
-    // recursive locking
+    // 상호호배타적인 다른 mutex들과 달리 shard_mutex는 공유 자원에 대한 두 가지 접근 방법을 제공
+    // (상호배타 : 어느 한 사건이 일어났을 때, 다른 사건이 발생할 수 없다는 것)
+    // 1) shared - 여러 스레드가 mutex 소유권을 공유하는 방법
+    // 2) exclusive - 오직 하나의 스레드만 mutex 소유권을 갖는 방법
+
+    // recursive locking (예제는 cppreference에서 발췌)
+    // 스레드에서 lock 또는 try_lock을 호출하면 unlock 될 때까지 해당 mutex의 소유권을 가짐.
+    // 한 스레드에서 소유권을 가지고 있더라도 다른 스레드에서 lock 또는 try_lock을 호출할 수 있음.
+    // 소유권은 스레드가 lock한 횟수만큼 unlock되어야 해제 됨.
+    // recursive_mutex 의 최대 lock 가능 횟수를 넘어가면 std::system_error 예외를 발생
+    recursive_mutex_test t;
+    std::thread rt1(&recursive_mutex_test::func1, &t);
+    std::thread rt2(&recursive_mutex_test::func2, &t);
+
+    rt1.join();
+    rt2.join();
 
     return 0;
 }
