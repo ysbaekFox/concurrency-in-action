@@ -5,6 +5,7 @@
 #include <list>
 #include <vector>
 #include <exception>
+#include <shared_mutex>
 
 #include "threadsafe_stack.h"
 #include "hierarchical_mutex.h"
@@ -273,6 +274,34 @@ private:
     std::recursive_mutex m;
 };
 
+class ThreadSafeCounter
+{
+public:
+    ThreadSafeCounter() = default;
+
+    unsigned int get() const
+    {
+        std::shared_lock lock(_mutex);
+        return _value;
+    }
+    
+    void increment()
+    {
+        std::unique_lock lock(_mutex);
+        _value++;
+    }
+
+    void reset()
+    {
+        std::unique_lock lock(_mutex);
+        _value = 0;
+    }
+
+private:
+    mutable std::shared_mutex _mutex;
+    unsigned int _value = 0;
+};
+
 int main()
 {
     // mutex를 사용하여 공유 데이터 보호할 수 있음
@@ -395,6 +424,8 @@ int main()
     // (상호배타 : 어느 한 사건이 일어났을 때, 다른 사건이 발생할 수 없다는 것)
     // 1) shared - 여러 스레드가 mutex 소유권을 공유하는 방법
     // 2) exclusive - 오직 하나의 스레드만 mutex 소유권을 갖는 방법
+    // 하나의 스레드에서는 한 종류의 lock만 호출할 수 있습니다 (exclusive lock 또는 shared lock).
+    // 
 
     // recursive locking (예제는 cppreference에서 발췌)
     // 스레드에서 lock 또는 try_lock을 호출하면 unlock 될 때까지 해당 mutex의 소유권을 가짐.
@@ -407,6 +438,25 @@ int main()
 
     rt1.join();
     rt2.join();
+
+      ThreadSafeCounter counter;
+ 
+    auto increment_and_print = [&counter]() 
+    {
+        for (int i = 0; i < 3; i++) 
+        {
+            counter.increment();
+            std::cout << std::this_thread::get_id() << ' ' << counter.get() << '\n';
+
+            // Note: Writing to std::cout actually needs to be synchronized as well
+            // by another std::mutex. This has been omitted to keep the example small.
+        }
+    };
+        
+    std::thread countThread1(increment_and_print);
+    std::thread countThread2(increment_and_print);
+    countThread1.join();
+    countThread2.join();
 
     return 0;
 }
