@@ -17,6 +17,9 @@ include_directories(${BOOST_INCLUDE_DIR})
 link_directories(${BOOST_LIBRARY_DIR})
 
 #add_executable(exec "ch2/launching_thread.cpp")
-add_executable(exec "ch3/threadsafe_stack.h"
-                    "ch3/sharing_data_threads.cpp")
+#add_executable(exec "ch3/threadsafe_stack.h"
+#                    "ch3/sharing_data_threads.cpp")
+add_executable(exec "ch4/sync_concurrency_oper.cpp"
+                    "ch4/threadsafe_queue.h")
+
 target_link_libraries(exec ${BOOST_LIBRARIES})
