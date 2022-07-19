@@ -132,7 +132,7 @@ void gui_thread()
         }
         task();
 
-        std::this_thread::sleep_for(std::chrono::microseconds(1000));
+        std::this_thread::sleep_for(std::chrono::microseconds(300));
     }
 }
 
@@ -248,13 +248,18 @@ int main()
         f7.wait();
     }
 
-
     // gui_thread에서는 Func을 처리하는 Thread이고,
     // post_task_for_gui_thread는 packaged_task list에 task를 추가하고
     // gui_thread에서 task를 처리하고 나면 반환 받은 future로 get 호출해서 값을 받음.
     std::thread gui_bg_thread(gui_thread);  
-    std::future<void> res = post_task_for_gui_thread(dummyFunc);
-    res.get();
+    std::future<void> res1 = post_task_for_gui_thread(dummyFunc);
+    res1.get();
+    std::future<void> res2 = post_task_for_gui_thread(dummyFunc);
+    res2.get();
+    std::future<void> res3 = post_task_for_gui_thread(dummyFunc);
+    res3.get();
+    std::future<void> res4 = post_task_for_gui_thread(dummyFunc);
+    res4.get();
     g_isShutdownReceived = true;
     gui_bg_thread.join();
 
