@@ -5,6 +5,8 @@
 #include <future>
 #include <string>
 #include <functional>
+#include <deque>
+#include <utility>
 #include "threadsafe_queue.h"
 
 bool flag = false;
@@ -95,13 +97,59 @@ void worker(std::promise<std::string>* p)
 class move_only
 {
 public:
-    move_only();
-    move_only(move_only&&);
+    move_only() = default;
+    move_only(move_only&&) = default;
     move_only(move_only const&) = delete;
-    move_only& operator=(move_only&&);
+    move_only& operator=(move_only&&) = default;
     move_only& operator=(move_only const&) = delete;
-    void operator()();
+    void operator()() { std::cout << "move_only::operator()" << std::endl; }
 };
+
+bool g_isShutdownReceived = false;
+std::deque<std::packaged_task<void()>> tasks;
+bool gui_shutdown_message_received()
+{
+    return g_isShutdownReceived;
+}
+
+void get_and_process_gui_message()
+{
+    std::cout << "get_and_process_gui_message" << std::endl;
+}
+
+void gui_thread()
+{
+    while(!gui_shutdown_message_received())
+    {
+        get_and_process_gui_message();
+        std::packaged_task<void()> task;
+        {
+            std::lock_guard<std::mutex> lk(m);
+            if(tasks.empty())
+                continue;
+            task = std::move(tasks.front());
+            tasks.pop_back();
+        }
+        task();
+
+        std::this_thread::sleep_for(std::chrono::microseconds(1000));
+    }
+}
+
+template<typename Func>
+std::future<void> post_task_for_gui_thread(Func f)
+{
+    std::packaged_task<void()> task(f);
+    std::future<void> res = task.get_future();
+    std::lock_guard<std::mutex> lk(m);
+    tasks.push_back(std::move(task));
+    return res;
+}
+
+void dummyFunc()
+{
+    std::cout << "dummy Func" << std::endl;
+}
 
 int main()
 {
@@ -184,7 +232,31 @@ int main()
 
     {
          std::async(baz, std::ref(x)); // call baz(x)
+         auto f5 = std::async(move_only());
     }
+
+    {
+        auto f6 = std::async(std::launch::async, Y(), 1.2);
+        std::this_thread::sleep_for(std::chrono::microseconds(10));
+        auto f7 = std::async(std::launch::deferred, baz, std::ref(x));
+
+        // 아마도 any 사용 시, 컴파일러가 더 나은 것을 알아서 선택하게 하는 것 같음.
+        // std::launch::deferred | std::launch::async 혹은 std::launch::any
+        // 그리고 any는 default와 같다는 것으로 보임. 즉, 아래 f8과 f9는 같다.
+        auto f8 = std::async(std::launch::deferred | std::launch::async, baz, std::ref(x));
+        auto f9 = std::async(baz, std::ref(x));
+        f7.wait();
+    }
+
+
+    // gui_thread에서는 Func을 처리하는 Thread이고,
+    // post_task_for_gui_thread는 packaged_task list에 task를 추가하고
+    // gui_thread에서 task를 처리하고 나면 반환 받은 future로 get 호출해서 값을 받음.
+    std::thread gui_bg_thread(gui_thread);  
+    std::future<void> res = post_task_for_gui_thread(dummyFunc);
+    res.get();
+    g_isShutdownReceived = true;
+    gui_bg_thread.join();
 
     return 0;
 }
