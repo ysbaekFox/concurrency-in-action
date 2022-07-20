@@ -6,6 +6,8 @@
 #include <string>
 #include <functional>
 #include <deque>
+#include <set>
+#include <math.h>
 #include <utility>
 #include "threadsafe_queue.h"
 
@@ -262,6 +264,84 @@ int main()
     res4.get();
     g_isShutdownReceived = true;
     gui_bg_thread.join();
+
+    // 많은 네트워크 연결들을 handle하는 것을 필요로 할 때,
+    // 각각의 연결을 분리된 스레드에서 처리하곤 한다.
+    // 왜냐하면 이것이 더 쉽게 생각하고 더 프로그램을 쉽게 만들기 때문이다.
+    // 이것은 적은 수의 연결에서 잘 동작한다. (당연히 적은 수의 스레드를 쓰겠지)
+    // 불행하게도, connection의 수가 증가하면, 알맞지 않게 된다. (become less suitable)
+    // - 많은 OS resource 소비와 잦은 conteext switching 유발
+    // std::future와 std::promise 사용할 수 있다,
+    // Listing 4.10 예제..... (근데 잘모르겠다...)
+
+    // saving an exception for the std::future
+    auto square_root = [](double x)
+    {
+        if(x < 0)
+        {
+            throw std::out_of_range("x < 0");
+        }
+        return sqrt(x);
+    };
+
+    auto calculate_value = [&square_root]()->auto{ return square_root(-1); };
+
+    //double y = square_root(-1); // throw를 던집니다.
+    // 그렇다면, 비동기로 실행하면 어떨까요?
+    std::future<double> asyncSqureRoot = std::async(square_root, -1);
+    asyncSqureRoot.wait(); // wait는 ㄱㅊ음.
+    //asyncSqureRoot.get(); // throw 됨 (exception이 future에 저장됨, 그래서 get 호출하면 thorw 발생함.)
+
+    // 또한, std::promise에서도 똑같이 동작함.
+    std::promise<double> some_promise;
+    auto resultFuture = some_promise.get_future();
+    try
+    {
+        some_promise.set_value(calculate_value());
+    }
+    catch(...)
+    {
+#if 0
+        some_promise.set_exception(std::current_exception());
+#else
+        // 요렇게 쓰면 좋다는데... 사실 잘 모르겠음.
+        // 코드가 더 깔끔하고, 컴파일러에게 최적화의 기회를 제공한다고 함....
+        some_promise.set_exception(std::make_exception_ptr(std::logic_error("x is negative")));
+#endif
+    }
+
+    try 
+    {
+        resultFuture.get();
+    }
+    catch(const std::exception& e) 
+    {
+        std::cout << "Exception from the thread: " << e.what() << '\n';
+    }
+
+    // waiting from multi threads
+
+    
+
+
+    // waiting with time limit
+    // clocks
+    // durations
+    // time point
+    // functions that accept timeouts
+    // using syncronization of operations to simplify code
+    // Functional programming with futures
+    // FP-Style Quick Sort
+    // FP-Style Parallel Quick Sort
+    // synchronizing operations with message passing
+    // Continuation-style concurrency with the concurrency TS
+    // chaining continuations
+    // waiting for more than one future
+    // waiting for the first future in a set with when-any
+    // Latches and barriers in the concurrency TS
+    // a basic latch type: std::experimental::latch
+    // experimental::barrier: a basic barrier
+    // std::experimental::flex_barrier-std::experimental::barrier's flexible friend
 
     return 0;
 }
