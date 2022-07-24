@@ -643,13 +643,7 @@ int main()
         atm_machine.h 참조
     */
 
-    // chaining continuations
-    // waiting for more than one future
-    // waiting for the first future in a set with when-any
-    // Latches and barriers in the concurrency TS
-    // a basic latch type: std::experimental::latch
-    // experimental::barrier: a basic barrier
-    // std::experimental::flex_barrier-std::experimental::barrier's flexible friend
+    // <experimental/future> 에 있는 기능들 테스트 못해봄, 컴파일러에서 지원도 안하고 굳이 할필욘 없을 것 같음.
 
     return 0;
 }
