@@ -7,6 +7,7 @@ include_directories ( Common )
 #set(CMAKE_CXX_STANDARD 11)
 #set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD 17)
+#set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_VERBOSE_MAKEFILE)
 
 set(BOOST_ROOT "$ENV{THIRD_PARTY_LIB}/boost_1_72_0")
@@ -19,8 +20,11 @@ link_directories(${BOOST_LIBRARY_DIR})
 #add_executable(exec "ch2/launching_thread.cpp")
 #add_executable(exec "ch3/threadsafe_stack.h"
 #                    "ch3/sharing_data_threads.cpp")
-add_executable(exec "ch4/sync_concurrency_oper.cpp"
-                    "ch4/threadsafe_queue.h"
-                    "ch4/quick_sort.h")
+
+#add_executable(exec "ch4/sync_concurrency_oper.cpp"
+#                    "ch4/threadsafe_queue.h"
+#                    "ch4/quick_sort.h")
+
+add_executable(exec "ch5/memory_model_atomic.cpp")
 
 target_link_libraries(exec ${BOOST_LIBRARIES})
